@@ -95,7 +95,7 @@ func init() {
     loadConfigs(*vhostDir)
 }
 
-func (p proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (p proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     log.Println("Requested", r.Host + r.URL.String())
     t := time.Now()
     if _, ok := vHosts[r.Host]; !ok {
