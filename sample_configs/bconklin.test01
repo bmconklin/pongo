@@ -1,0 +1,8 @@
+{
+    "origin": "http://cerebro-app01-dal05.maxcdn.net:3050",
+    "vhosts": [
+        "cerebro-app01.maxcdn-proxy.net",
+        "cerebro-app01.maxcdn-tls.net"
+    ],
+    "expire": 600
+}
