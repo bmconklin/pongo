@@ -123,7 +123,6 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         return
     }
     data, status := cache.Get(req.Host + url)
-    l.CacheStatus = status
     if status == "MISS" || status == "EXPIRED" {
         var err error
 
@@ -137,18 +136,23 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         l.OriginTime = time.Since(t)
         b, err = httputil.DumpResponse(resp, true)
         if err != nil {
-            log.Println(err)
-            rw.WriteHeader(http.StatusInternalServerError)
-            return
+            if status == "EXPIRED" {
+                status = "STALE"
+                b = data
+            } else {
+                log.Println(err)
+                rw.WriteHeader(http.StatusInternalServerError)
+                return
+            }
         }
         if cacheableRequest(req) && cacheableResponse(resp) {
             cache.Set(req.Host + url, b, vHosts[req.Host].Expire)
         }
     }
     if status == "HIT" {
-        l.CacheStatus = "HIT"
         b = data
-    }
+    }    
+    l.CacheStatus = status
     buf := bytes.NewBuffer(b)
     resp, err := http.ReadResponse(bufio.NewReader(buf), req)
     if err != nil {

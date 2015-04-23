@@ -33,7 +33,7 @@ func (c *Cache) Get(key string) (data []byte, status string) {
     if ci, ok := c.Data[key]; !ok {
         return empty, "MISS"
     } else if ci.expireTime.Before(time.Now()) {
-        return empty, "EXPIRED"
+        return ci.response, "EXPIRED"
     } else {
         return ci.response, "HIT"
     }
