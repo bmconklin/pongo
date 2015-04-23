@@ -121,8 +121,10 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         log.Println("Couldn't find Vhost:", req.Host)
         rw.WriteHeader(http.StatusInternalServerError)
         return
-    } else if _, ok := vHosts[req.Host].Cache[url]; !ok || vHosts[req.Host].Cache[url].expireTime.Before(time.Now()) {
-        l.CacheStatus = "MISS"
+    }
+    data, status := cache.Get(req.Host + url)
+    l.CacheStatus = status
+    if status == "MISS" || status == "EXPIRED" {
         var err error
 
         t := time.Now()
@@ -140,14 +142,12 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
             return
         }
         if cacheableRequest(req) && cacheableResponse(resp) {
-            vHosts[req.Host].Cache[url] = &cache{
-                response:   b,
-                expireTime: time.Now().Add(time.Duration(vHosts[req.Host].Expire) * time.Second),
-            }
+            cache.Set(req.Host + url, b, vHosts[req.Host].Expire)
         }
-    } else {
+    }
+    if status == "HIT" {
         l.CacheStatus = "HIT"
-        b = vHosts[req.Host].Cache[url].response
+        b = data
     }
     buf := bytes.NewBuffer(b)
     resp, err := http.ReadResponse(bufio.NewReader(buf), req)
@@ -165,6 +165,7 @@ func init() {
     runtime.GOMAXPROCS(runtime.NumCPU())
     loadConfig(*configDir)
     loadConfigs(*vhostDir)
+    cache = NewCache(1024)
 }
 
 // start server

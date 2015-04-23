@@ -15,7 +15,6 @@ type vHost struct {
     Origin  string                  `json:"origin"`
     VHosts  []string                `json:"vhosts"`
     Expire  int                     `json:"expire"`
-    Cache   map[string]*cache
     Proxy   *httputil.ReverseProxy
 }
 
@@ -79,7 +78,6 @@ func getConfig(path string) error {
         return err
     }
 
-    config.Cache = make(map[string]*cache)
     config.Proxy = httputil.NewSingleHostReverseProxy(remote)
     for _, v := range config.VHosts {
         vHosts[v] = &config
