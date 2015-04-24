@@ -16,6 +16,7 @@ type Cache struct {
 type cacheItem struct {
     response    []byte
     expireTime  time.Time
+    fetching    bool
 }
 
 var cache *Cache

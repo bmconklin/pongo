@@ -12,10 +12,11 @@ import(
 
 // config for a vhost
 type vHost struct {
-    Origin  string                  `json:"origin"`
-    VHosts  []string                `json:"vhosts"`
-    Expire  int                     `json:"expire"`
-    Proxy   *httputil.ReverseProxy
+    Origin          string                  `json:"origin"`
+    VHosts          []string                `json:"vhosts"`
+    Expire          int                     `json:"expire"`
+    Proxy           *httputil.ReverseProxy
+    ActiveRequests  *ActiveRequests
 }
 
 // Configuration settings for a log
@@ -81,6 +82,9 @@ func getConfig(path string) error {
     config.Proxy = httputil.NewSingleHostReverseProxy(remote)
     for _, v := range config.VHosts {
         vHosts[v] = &config
+    }
+    config.ActiveRequests = &ActiveRequests{
+        Targets: make(map[string]*Target),
     }
     log.Println("Loaded config for", path)
     return nil

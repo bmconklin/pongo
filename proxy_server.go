@@ -4,6 +4,7 @@ import(
     "io"
     "log"
     "net"
+    "sync"
     "flag"
     "time"
     "bufio"
@@ -17,6 +18,17 @@ import(
 // Wrapper for http.Handler interface, used to implement serveHTTP()
 type proxyHandler struct {
     http.Handler
+}
+
+type Target struct {
+    Active  bool
+    Waiting int
+    Chan    chan []byte
+}
+
+type ActiveRequests struct{
+    Lock    sync.Mutex
+    Targets map[string]*Target
 }
 
 // any flags passed in at runtime
@@ -38,6 +50,36 @@ var hopHeaders = []string{
     "Upgrade",
 }
 
+func (ar *ActiveRequests) Start(target string) bool {
+    ar.Lock.Lock()
+    defer ar.Lock.Unlock()
+    if _, ok := ar.Targets[target]; !ok {
+        ar.Targets[target] = &Target{
+            Chan: make(chan []byte),
+        }
+    }
+    if !ar.Targets[target].Active {
+        ar.Targets[target].Active = true
+        return true
+    }
+    ar.Targets[target].Waiting++
+    return false
+}
+
+func (ar *ActiveRequests) Stop(target string, b []byte) {
+    ar.Lock.Lock()
+    defer ar.Lock.Unlock()
+    ar.Targets[target].Active = false
+    for i := 0; i < ar.Targets[target].Waiting; i++ {
+        ar.Targets[target].Chan <- b
+    }
+}
+
+func (ar *ActiveRequests) Wait(target string) []byte {
+    b := <- ar.Targets[target].Chan
+    return b
+}
+
 func copyHeader(dst, src http.Header) {
     for k, vv := range src {
         for _, v := range vv {
@@ -51,6 +93,10 @@ func respond(res *http.Response, rw http.ResponseWriter) {
     copyHeader(rw.Header(), res.Header)
     rw.WriteHeader(res.StatusCode)
     io.Copy(rw, res.Body)
+}
+
+func headerControl(resp *http.Response) {
+    resp.Header.Add("Powered-by", "Pongo_v0.3.1")
 }
 
 func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
@@ -94,17 +140,19 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
         outreq.Header.Set("X-Forwarded-For", clientIP)
     }
 
-    res, err := transport.RoundTrip(outreq)
+    resp, err := transport.RoundTrip(outreq)
     if err != nil {
         log.Println("http: proxy error: %v", err)
-        return res, err
+        return resp, err
     }
 
     for _, h := range hopHeaders {
-        res.Header.Del(h)
+        resp.Header.Del(h)
     }
 
-    return res, err
+    headerControl(resp)
+
+    return resp, err
 }
 
 // handler method
@@ -124,29 +172,35 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     }
     data, status := cache.Get(req.Host + url)
     if status == "MISS" || status == "EXPIRED" {
-        var err error
+        if !cacheableRequest(req) || vHosts[req.Host].ActiveRequests.Start(req.Host + url)  {
+            var err error
 
-        t := time.Now()
-        resp, err := proxy(vHosts[req.Host], req)
-        if err != nil {
-            log.Println("http: proxy error: %v", err)
-            rw.WriteHeader(http.StatusInternalServerError)
-            return
-        }
-        l.OriginTime = time.Since(t)
-        b, err = httputil.DumpResponse(resp, true)
-        if err != nil {
-            if status == "EXPIRED" {
-                status = "STALE"
-                b = data
-            } else {
-                log.Println(err)
+            t := time.Now()
+            resp, err := proxy(vHosts[req.Host], req)
+            if err != nil {
+                log.Println("http: proxy error: %v", err)
                 rw.WriteHeader(http.StatusInternalServerError)
                 return
             }
-        }
-        if cacheableRequest(req) && cacheableResponse(resp) {
-            cache.Set(req.Host + url, b, vHosts[req.Host].Expire)
+            l.OriginTime = time.Since(t)
+
+            b, err = httputil.DumpResponse(resp, true)
+            if err != nil {
+                if status == "EXPIRED" {
+                    status = "STALE"
+                    b = data
+                } else {
+                    log.Println(err)
+                    rw.WriteHeader(http.StatusInternalServerError)
+                    return
+                }
+            }
+            if cacheableRequest(req) && cacheableResponse(resp) {
+                cache.Set(req.Host + url, b, vHosts[req.Host].Expire)
+                vHosts[req.Host].ActiveRequests.Stop(req.Host + url, b)
+            }
+        } else {
+            b = vHosts[req.Host].ActiveRequests.Wait(req.Host + url)
         }
     }
     if status == "HIT" {
@@ -157,6 +211,8 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     resp, err := http.ReadResponse(bufio.NewReader(buf), req)
     if err != nil {
         log.Println(err)
+        rw.WriteHeader(http.StatusInternalServerError)
+        return
     }
     respond(resp, rw)
     l.ParseResp(resp)
