@@ -5,10 +5,9 @@
         "cerebro-app01.maxcdn-tls.net",
         "localhost"
     ],
-    "cache_key": "$scheme$host$uri$querystring",
+    "cache_key": "$method $scheme$host$uri$querystring",
     "expire": 600,
     "set_header": {
-    	"Powered-by" : "Pongo"
     },
     "cache_bypass": false
 }
