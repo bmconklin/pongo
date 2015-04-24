@@ -4,9 +4,7 @@ import(
     "os"
     "log"
     "errors"
-    "strings"
     "net/url"
-    "net/http"
     "io/ioutil"
     "encoding/json"
     "net/http/httputil"
@@ -40,23 +38,13 @@ type Config struct {
         Type    string
         Size    int
     }
-    Logs        []LogConfig            `json:"logs"`
-    SetHeader   map[string]string   `json:"set_header"`
+    Logs        []LogConfig             `json:"logs"`
+    SetHeader   map[string]string       `json:"set_header"`
 }
 
 // hashmap of vhost to config
 var vHosts map[string]*vHost
 var config Config
-
-func (v *vHost) GetCacheKey(r *http.Request) string {
-    replacer := strings.NewReplacer(
-        "$scheme", r.URL.Scheme, 
-        "$host", r.Host, 
-        "$uri", r.URL.Path, 
-        "$querystring", r.URL.RawQuery,
-    )
-    return replacer.Replace(v.CacheKey)
-}
 
 // Load global config file
 func loadConfig(path string) error {

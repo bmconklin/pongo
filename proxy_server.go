@@ -9,6 +9,7 @@ import(
     "time"
     "bufio"
     "bytes"
+    "net/url"
     "strings"
     "runtime"
     "net/http"
@@ -112,7 +113,7 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
 
     outreq := new(http.Request)
     *outreq = *req // includes shallow copies of maps, but okay
-    v.Proxy.Director(outreq)
+    v.Proxy.Director(outreq)    
     outreq.Proto = "HTTP/1.1"
     outreq.ProtoMajor = 1
     outreq.ProtoMinor = 1
@@ -167,24 +168,27 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
 func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     l := new(AccessLog)
     l.ParseReq(req)
-    cacheKey := vHosts[req.Host].GetCacheKey(req)
-
     var b []byte
     if _, ok := vHosts[req.Host]; !ok {
         log.Println("Couldn't find Vhost:", req.Host)
         rw.WriteHeader(http.StatusInternalServerError)
         return
     }
+    origin, _ := url.Parse(vHosts[req.Host].Origin)
+    cacheKey := vHosts[req.Host].GetCacheKey(req)
     data, status := cache.Get(cacheKey)
     if status == "MISS" || status == "EXPIRED" {
+        // ORDER OF CONDITIONS IS VERY IMPORTANT
         if !cacheableRequest(req) || vHosts[req.Host].ByPass || vHosts[req.Host].ActiveRequests.Start(cacheKey)  {
             var err error
 
             t := time.Now()
+
             resp, err := proxy(vHosts[req.Host], req)
             if err != nil {
-                log.Println("http: proxy error: %v", err)
+                log.Println("http: proxy error:", err)
                 rw.WriteHeader(http.StatusInternalServerError)
+                vHosts[req.Host].ActiveRequests.Stop(cacheKey, b)
                 return
             }
             l.OriginTime = time.Since(t)
@@ -195,8 +199,9 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                     status = "STALE"
                     b = data
                 } else {
-                    log.Println(err)
+                    log.Println("Error reading proxy response:", err)
                     rw.WriteHeader(http.StatusInternalServerError)
+                    vHosts[req.Host].ActiveRequests.Stop(cacheKey, b)
                     return
                 }
             }
@@ -213,6 +218,8 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         b = data
     }    
     l.CacheStatus = status
+    l.Scheme = origin.Scheme
+
     buf := bytes.NewBuffer(b)
     resp, err := http.ReadResponse(bufio.NewReader(buf), req)
     if err != nil {

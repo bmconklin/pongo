@@ -2,13 +2,12 @@ package main
 
 import (
     "os"
-	"log"
-	"time"
+    "time"
     "bufio"
     "strconv"
     "strings"
-	"net/url"
-	"net/http"
+    "net/url"
+    "net/http"
 )
 
 // Holds Log data for each request
@@ -20,6 +19,7 @@ type AccessLog struct {
     Status          string
     StatusCode      int
     Proto           string
+    Scheme          string
     ContentLength   int64
     RequestTime     time.Duration
     OriginTime      time.Duration
@@ -30,7 +30,7 @@ type AccessLog struct {
 }
 
 type AccessLogger struct {
-    Logger *log.Logger
+    Logger *bufio.Writer
     Format string
 }
 
@@ -54,29 +54,26 @@ func (l *AccessLog) ParseResp(resp *http.Response) {
     l.StatusCode    = resp.StatusCode
     l.ContentLength = resp.ContentLength
     l.RequestTime   = time.Since(l.Timestamp)
+    l.URL           = resp.Request.URL
 }
 
 func openAccessLogs() {
     accessLogger = make([]*AccessLogger, 0)
     for _, l := range config.Logs {
         if l.Type == "access" {
-            file, err := os.OpenFile(l.Location, os.SEEK_END, 0600)
+            file, err := os.OpenFile(l.Location, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
             if err != nil {
-                file, err = os.Create(l.Location)
-                if err != nil {
-                    panic(err)
-                }
+                panic(err)
             }
             buf := bufio.NewWriter(file)
             accessLogger = append(accessLogger, &AccessLogger{
-                    Logger: log.New(buf, "Pongo access:", 0),
+                    Logger: buf,
                     Format: l.Format,
                 })
         }
     }
 }
 
-// TODO: Print log using file path and format from config file
 func (l *AccessLog) Log() {
     if len(accessLogger) == 0 {
         openAccessLogs()
@@ -87,13 +84,13 @@ func (l *AccessLog) Log() {
             "$remote_addr", l.RemoteAddr,
             "$hostname", hostname,
             "$cache_status", l.CacheStatus,
-            "$http_host", l.URL.Host,
+            "$http_host", l.Host,
             "$request_method", l.Method,
             "$origin_response_time", l.OriginTime.String(),
             "$server_protocol", l.Proto,
             "$zone_query_string", l.URL.RawQuery,
             "$http_referer", l.Referer,
-            "$scheme", l.URL.Scheme,
+            "$scheme", l.Scheme,
             "$zone_status", "",
             "$msec", l.Timestamp.Format("2006-01-02_15:04:05.000"),
             "$uri", l.URL.Path,
@@ -102,6 +99,7 @@ func (l *AccessLog) Log() {
         )
 
     for i := range accessLogger {
-        log.Println(accessLogReplacer.Replace(accessLogger[i].Format))
+        accessLogger[i].Logger.Write([]byte(accessLogReplacer.Replace(accessLogger[i].Format) + "\n"))
+        accessLogger[i].Logger.Flush()
     }
 }

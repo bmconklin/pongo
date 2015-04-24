@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"time"
+    "strings"
 	"net/http"
 )
 
@@ -21,11 +22,22 @@ type cacheItem struct {
 
 var cache *Cache
 
+func (c *Cache) scheduleCleaner(d time.Duration) {
+    t := time.Tick(d)
+    for {
+        <-t
+        c.PurgeExpired()
+    }
+}
+
 func NewCache(size int) *Cache {
-    return &Cache{
+    c := &Cache{
         Data: make(map[string]*cacheItem),
         MaxSize: size,
     }
+
+    go c.scheduleCleaner(60 * time.Second)
+    return c
 }
 
 func (c *Cache) Get(key string) (data []byte, status string) {
@@ -48,6 +60,17 @@ func (c *Cache) Set(key string, data []byte, seconds int) {
     if len(c.Data) > c.MaxSize {
         go c.PurgeExpired()
     }
+}
+
+func (v *vHost) GetCacheKey(r *http.Request) string {
+    replacer := strings.NewReplacer(
+        "$scheme", r.URL.Scheme, 
+        "$host", r.Host, 
+        "$uri", r.URL.Path, 
+        "$querystring", r.URL.RawQuery,
+        "$method", r.Method,
+    )
+    return replacer.Replace(v.CacheKey)
 }
 
 func (c *Cache) PurgeExpired() {
