@@ -34,7 +34,6 @@ type AccessLogger struct {
     Format string
 }
 
-var logger []LogConfig
 var accessLogger []*AccessLogger
 
 // Copy values from the request to the log 
@@ -57,13 +56,13 @@ func (l *AccessLog) ParseResp(resp *http.Response) {
     l.RequestTime   = time.Since(l.Timestamp)
 }
 
-func getAccessLogs() {
+func openAccessLogs() {
     accessLogger = make([]*AccessLogger, 0)
-    for i := range logger {
-        if logger[i].Type == "access" {
-            file, err := os.Open(logger[i].Location)
+    for _, l := range config.Logs {
+        if l.Type == "access" {
+            file, err := os.OpenFile(l.Location, os.SEEK_END, 0600)
             if err != nil {
-                file, err = os.Create(logger[i].Location)
+                file, err = os.Create(l.Location)
                 if err != nil {
                     panic(err)
                 }
@@ -71,7 +70,7 @@ func getAccessLogs() {
             buf := bufio.NewWriter(file)
             accessLogger = append(accessLogger, &AccessLogger{
                     Logger: log.New(buf, "Pongo access:", 0),
-                    Format: logger[i].Format,
+                    Format: l.Format,
                 })
         }
     }
@@ -80,7 +79,7 @@ func getAccessLogs() {
 // TODO: Print log using file path and format from config file
 func (l *AccessLog) Log() {
     if len(accessLogger) == 0 {
-        getAccessLogs()
+        openAccessLogs()
     }
     hostname, _ := os.Hostname()
     accessLogReplacer := strings.NewReplacer(
@@ -101,7 +100,8 @@ func (l *AccessLog) Log() {
             "$http_user_agent", l.UserAgent,
             "$request_time", l.RequestTime.String(),
         )
+
     for i := range accessLogger {
-        accessLogger[i].Logger.Println(accessLogReplacer.Replace(accessLogger[i].Format))
+        log.Println(accessLogReplacer.Replace(accessLogger[i].Format))
     }
 }

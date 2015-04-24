@@ -33,7 +33,7 @@ type ActiveRequests struct{
 
 // any flags passed in at runtime
 var (
-    configDir   = flag.String("conf", "/etc/pongo/conf/prongo.conf", "location of config file")
+    configDir   = flag.String("conf", "/etc/pongo/conf/pongo.conf", "location of config file")
     vhostDir    = flag.String("dir", "/etc/pongo/conf/vhosts", "root directory for vhost configs")
 )
 
@@ -96,6 +96,9 @@ func respond(res *http.Response, rw http.ResponseWriter) {
 }
 
 func headerControl(v *vHost, resp *http.Response) {
+    for k, v := range config.SetHeader {
+        resp.Header.Add(k,v)
+    }
     for k, v := range v.SetHeader {
         resp.Header.Add(k, v)
     }
@@ -226,7 +229,9 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 func init() {
     flag.Parse()
     runtime.GOMAXPROCS(runtime.NumCPU())
-    loadConfig(*configDir)
+    if err := loadConfig(*configDir); err != nil {
+        log.Panic(err)
+    }
     loadConfigs(*vhostDir)
     cache = NewCache(1024)
 }

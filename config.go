@@ -26,21 +26,22 @@ type vHost struct {
 
 // Configuration settings for a log
 type LogConfig struct {
-    Type        string
-    Location    string
-    Format      string
-    Verbose     bool
+    Type        string      `json:"type"`
+    Location    string      `json:"location"`
+    Format      string      `json:"format"`
+    Verbose     bool        `json:"verbose"`
 }
 
 // Global Config structure
 type Config struct {
-    Server  []string
-    Port    []int
+    Server      []string        
+    Port        []int
     Cache   struct{
         Type    string
         Size    int
     }
-    Log     []LogConfig
+    Logs        []LogConfig            `json:"logs"`
+    SetHeader   map[string]string   `json:"set_header"`
 }
 
 // hashmap of vhost to config
@@ -69,6 +70,7 @@ func loadConfig(path string) error {
     if err = jsonDecoder.Decode(&config); err != nil {
         return errors.New("Unable to decode config file. " + err.Error())
     }
+
     log.Println("Loaded Pongo config from", path)
     return nil
 }
