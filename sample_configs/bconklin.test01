@@ -1,8 +1,14 @@
 {
-    "origin": "http://cerebro-app01-dal05.maxcdn.net:3050",
+    "origin": "http://github.com",
     "vhosts": [
         "cerebro-app01.maxcdn-proxy.net",
-        "cerebro-app01.maxcdn-tls.net"
+        "cerebro-app01.maxcdn-tls.net",
+        "localhost"
     ],
-    "expire": 600
+    "cache_key": "$scheme$host$uri$querystring",
+    "expire": 600,
+    "set_header": {
+    	"Powered-by" : "Pongo"
+    },
+    "cache_bypass": false
 }

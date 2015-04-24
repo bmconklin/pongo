@@ -95,8 +95,10 @@ func respond(res *http.Response, rw http.ResponseWriter) {
     io.Copy(rw, res.Body)
 }
 
-func headerControl(resp *http.Response) {
-    resp.Header.Add("Powered-by", "Pongo_v0.3.1")
+func headerControl(v *vHost, resp *http.Response) {
+    for k, v := range v.SetHeader {
+        resp.Header.Add(k, v)
+    }
 }
 
 func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
@@ -150,7 +152,7 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
         resp.Header.Del(h)
     }
 
-    headerControl(resp)
+    headerControl(v, resp)
 
     return resp, err
 }
@@ -160,9 +162,9 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
 // If request is cached, serve from cache
 // Otherwise proxy and cache the response according to config
 func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-    l := new(Logger)
+    l := new(AccessLog)
     l.ParseReq(req)
-    url := req.URL.String()
+    cacheKey := vHosts[req.Host].GetCacheKey(req)
 
     var b []byte
     if _, ok := vHosts[req.Host]; !ok {
@@ -170,9 +172,9 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         rw.WriteHeader(http.StatusInternalServerError)
         return
     }
-    data, status := cache.Get(req.Host + url)
+    data, status := cache.Get(cacheKey)
     if status == "MISS" || status == "EXPIRED" {
-        if !cacheableRequest(req) || vHosts[req.Host].ActiveRequests.Start(req.Host + url)  {
+        if !cacheableRequest(req) || vHosts[req.Host].ByPass || vHosts[req.Host].ActiveRequests.Start(cacheKey)  {
             var err error
 
             t := time.Now()
@@ -195,12 +197,13 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                     return
                 }
             }
-            if cacheableRequest(req) && cacheableResponse(resp) {
-                cache.Set(req.Host + url, b, vHosts[req.Host].Expire)
-                vHosts[req.Host].ActiveRequests.Stop(req.Host + url, b)
+            if cacheableRequest(req) && cacheableResponse(resp) && !vHosts[req.Host].ByPass {
+                cache.Set(cacheKey, b, vHosts[req.Host].Expire)
+                vHosts[req.Host].ActiveRequests.Stop(cacheKey, b)
             }
         } else {
-            b = vHosts[req.Host].ActiveRequests.Wait(req.Host + url)
+            b = vHosts[req.Host].ActiveRequests.Wait(cacheKey)
+            status = "COLLAPSED"
         }
     }
     if status == "HIT" {

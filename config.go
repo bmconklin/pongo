@@ -4,7 +4,9 @@ import(
     "os"
     "log"
     "errors"
+    "strings"
     "net/url"
+    "net/http"
     "io/ioutil"
     "encoding/json"
     "net/http/httputil"
@@ -14,7 +16,10 @@ import(
 type vHost struct {
     Origin          string                  `json:"origin"`
     VHosts          []string                `json:"vhosts"`
+    CacheKey        string                  `json:"cache_key"`
     Expire          int                     `json:"expire"`
+    SetHeader       map[string]string       `json:"set_header"`
+    ByPass          bool                    `json:"cache_bypass"`
     Proxy           *httputil.ReverseProxy
     ActiveRequests  *ActiveRequests
 }
@@ -41,6 +46,16 @@ type Config struct {
 // hashmap of vhost to config
 var vHosts map[string]*vHost
 var config Config
+
+func (v *vHost) GetCacheKey(r *http.Request) string {
+    replacer := strings.NewReplacer(
+        "$scheme", r.URL.Scheme, 
+        "$host", r.Host, 
+        "$uri", r.URL.Path, 
+        "$querystring", r.URL.RawQuery,
+    )
+    return replacer.Replace(v.CacheKey)
+}
 
 // Load global config file
 func loadConfig(path string) error {
