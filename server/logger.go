@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
     "os"
@@ -36,6 +36,15 @@ type AccessLogger struct {
 
 var accessLogger []*AccessLogger
 
+func NewAccessLog() *AccessLog{
+    hostname, _ := os.Hostname()
+
+    l := new(AccessLog)
+    l.Timestamp = time.Now()
+    l.Host      = hostname
+    return l
+}
+
 // Copy values from the request to the log 
 func (l *AccessLog) ParseReq(req *http.Request) {
     l.Method        = req.Method
@@ -43,7 +52,6 @@ func (l *AccessLog) ParseReq(req *http.Request) {
     l.Host          = req.Host
     l.RemoteAddr    = req.RemoteAddr
     l.Proto         = req.Proto
-    l.Timestamp     = time.Now()
     l.Referer       = req.Referer()
     l.UserAgent     = req.UserAgent()
 }
@@ -78,11 +86,10 @@ func (l *AccessLog) Log() {
     if len(accessLogger) == 0 {
         openAccessLogs()
     }
-    hostname, _ := os.Hostname()
     accessLogReplacer := strings.NewReplacer(
             "$body_bytes_sent", strconv.FormatInt(l.ContentLength, 10),
             "$remote_addr", l.RemoteAddr,
-            "$hostname", hostname,
+            "$hostname", l.Host,
             "$cache_status", l.CacheStatus,
             "$http_host", l.Host,
             "$request_method", l.Method,

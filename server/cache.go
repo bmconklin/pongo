@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"log"
@@ -62,7 +62,7 @@ func (c *Cache) Set(key string, data []byte, seconds int) {
     }
 }
 
-func (v *vHost) GetCacheKey(r *http.Request) string {
+func (lc *LocationConfig) GetCacheKey(r *http.Request) string {
     replacer := strings.NewReplacer(
         "$scheme", r.URL.Scheme, 
         "$host", r.Host, 
@@ -70,7 +70,7 @@ func (v *vHost) GetCacheKey(r *http.Request) string {
         "$querystring", r.URL.RawQuery,
         "$method", r.Method,
     )
-    return replacer.Replace(v.CacheKey)
+    return replacer.Replace(lc.CacheKey)
 }
 
 func (c *Cache) PurgeExpired() {

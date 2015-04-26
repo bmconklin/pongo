@@ -1,13 +1,21 @@
 {
-    "origin": "http://cerebro-app01-dal05.maxcdn.net:3050",
+    "port": 80,
     "vhosts": [
         "cerebro-app01.maxcdn-proxy.net",
         "cerebro-app01.maxcdn-tls.net",
         "localhost"
     ],
-    "cache_key": "$method $scheme$host$uri$querystring",
-    "expire": 600,
-    "set_header": {
+    "location": {
+        "/": {
+            "origin": "http://www.asdf.com",
+            "cache_key": "$method $scheme$host$uri$querystring",
+            "expire": 60,
+            "set_header": {
+            },
+            "cache_bypass": false
+        }
     },
-    "cache_bypass": false
+    "variables": {
+        "company" : 10
+    }
 }

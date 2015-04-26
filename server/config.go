@@ -1,4 +1,4 @@
-package main
+package server
 
 import(
     "os"
@@ -10,16 +10,21 @@ import(
     "net/http/httputil"
 )
 
-// config for a vhost
-type vHost struct {
+type LocationConfig struct {
     Origin          string                  `json:"origin"`
-    VHosts          []string                `json:"vhosts"`
     CacheKey        string                  `json:"cache_key"`
     Expire          int                     `json:"expire"`
     SetHeader       map[string]string       `json:"set_header"`
     ByPass          bool                    `json:"cache_bypass"`
     Proxy           *httputil.ReverseProxy
     ActiveRequests  *ActiveRequests
+}
+
+// config for a vhost
+type vHost struct {
+    Port            int                         `json:"port"`
+    VHosts          []string                    `json:"vhosts"`
+    Location        map[string]*LocationConfig  `json:"location"`
 }
 
 // Configuration settings for a log
@@ -32,14 +37,15 @@ type LogConfig struct {
 
 // Global Config structure
 type Config struct {
-    Server      []string        
-    Port        []int
+    Server      string        
+    Port        int
     Cache   struct{
         Type    string
         Size    int
     }
     Logs        []LogConfig             `json:"logs"`
     SetHeader   map[string]string       `json:"set_header"`
+    VhostPath   string                  `json:"vhostpath"`
 }
 
 // hashmap of vhost to config
@@ -47,7 +53,7 @@ var vHosts map[string]*vHost
 var config Config
 
 // Load global config file
-func loadConfig(path string) error {
+func LoadConfig(path string) error {
     file, err := os.Open(path)
     if err != nil {
         return errors.New("Error reading from "+ path +". Error returned: " + err.Error())
@@ -79,17 +85,20 @@ func getConfig(path string) error {
         return errors.New("Unable to decode config file. " + err.Error())
     }
     
-    remote, err := url.Parse(config.Origin)
-    if err != nil {
-        return err
+    for path, cfg := range config.Location {
+        remote, err := url.Parse(cfg.Origin)
+        if err != nil {
+            return err
+        }
+
+        config.Location[path].Proxy = httputil.NewSingleHostReverseProxy(remote)
+        config.Location[path].ActiveRequests = &ActiveRequests{
+            Targets: make(map[string]*Target),
+        }
     }
 
-    config.Proxy = httputil.NewSingleHostReverseProxy(remote)
     for _, v := range config.VHosts {
         vHosts[v] = &config
-    }
-    config.ActiveRequests = &ActiveRequests{
-        Targets: make(map[string]*Target),
     }
     log.Println("Loaded config for", path)
     return nil
@@ -99,19 +108,20 @@ func getConfig(path string) error {
 // root directory and loads every file found that matches
 // the config file format. Will print an error if config is 
 // not in the proper format (currently JSON).
-func loadConfigs(dir string) {
+func loadVhosts(dir string) error {
     if vHosts == nil {
         vHosts = make(map[string]*vHost)
     } 
     files, err := ioutil.ReadDir(dir)
     if err != nil {
-        log.Println("Could not read from directory:", dir, "Error:",err)
+        return err
     }
     for _, f := range files {
         if f.IsDir() {
-            loadConfigs(dir+"/"+f.Name())
+            loadVhosts(dir+"/"+f.Name())
         } else if err := getConfig(dir+"/"+f.Name()); err != nil {
-            log.Println(err)
+            return err
         }
     }
+    return nil
 }

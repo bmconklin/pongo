@@ -1,17 +1,16 @@
-package main
+package server
 
 import(
     "io"
     "log"
     "net"
     "sync"
-    "flag"
     "time"
     "bufio"
     "bytes"
     "net/url"
+    "strconv"
     "strings"
-    "runtime"
     "net/http"
     "net/http/httputil"
 )
@@ -19,6 +18,7 @@ import(
 // Wrapper for http.Handler interface, used to implement serveHTTP()
 type proxyHandler struct {
     http.Handler
+    Config      *LocationConfig
 }
 
 type Target struct {
@@ -31,12 +31,6 @@ type ActiveRequests struct{
     Lock    sync.Mutex
     Targets map[string]*Target
 }
-
-// any flags passed in at runtime
-var (
-    configDir   = flag.String("conf", "/etc/pongo/conf/pongo.conf", "location of config file")
-    vhostDir    = flag.String("dir", "/etc/pongo/conf/vhosts", "root directory for vhost configs")
-)
 
 // Hop-by-hop headers. These are removed when sent to the backend.
 // http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
@@ -96,24 +90,24 @@ func respond(res *http.Response, rw http.ResponseWriter) {
     io.Copy(rw, res.Body)
 }
 
-func headerControl(v *vHost, resp *http.Response) {
+func headerControl(lc *LocationConfig, resp *http.Response) {
     for k, v := range config.SetHeader {
         resp.Header.Add(k,v)
     }
-    for k, v := range v.SetHeader {
+    for k, v := range lc.SetHeader {
         resp.Header.Add(k, v)
     }
 }
 
-func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
-    transport := v.Proxy.Transport
+func proxy(lc *LocationConfig, req  *http.Request) (*http.Response, error) {
+    transport := lc.Proxy.Transport
     if transport == nil {
         transport = http.DefaultTransport
     }
 
     outreq := new(http.Request)
     *outreq = *req // includes shallow copies of maps, but okay
-    v.Proxy.Director(outreq)    
+    lc.Proxy.Director(outreq)    
     outreq.Proto = "HTTP/1.1"
     outreq.ProtoMajor = 1
     outreq.ProtoMinor = 1
@@ -156,7 +150,7 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
         resp.Header.Del(h)
     }
 
-    headerControl(v, resp)
+    headerControl(lc, resp)
 
     return resp, err
 }
@@ -166,29 +160,24 @@ func proxy(v *vHost, req  *http.Request) (*http.Response, error) {
 // If request is cached, serve from cache
 // Otherwise proxy and cache the response according to config
 func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-    l := new(AccessLog)
+    l := NewAccessLog()
     l.ParseReq(req)
     var b []byte
-    if _, ok := vHosts[req.Host]; !ok {
-        log.Println("Couldn't find Vhost:", req.Host)
-        rw.WriteHeader(http.StatusInternalServerError)
-        return
-    }
-    origin, _ := url.Parse(vHosts[req.Host].Origin)
-    cacheKey := vHosts[req.Host].GetCacheKey(req)
+    origin, _ := url.Parse(p.Config.Origin)
+    cacheKey := p.Config.GetCacheKey(req)
     data, status := cache.Get(cacheKey)
     if status == "MISS" || status == "EXPIRED" {
         // ORDER OF CONDITIONS IS VERY IMPORTANT
-        if !cacheableRequest(req) || vHosts[req.Host].ByPass || vHosts[req.Host].ActiveRequests.Start(cacheKey)  {
+        if !cacheableRequest(req) || p.Config.ByPass || p.Config.ActiveRequests.Start(cacheKey)  {
             var err error
 
             t := time.Now()
 
-            resp, err := proxy(vHosts[req.Host], req)
+            resp, err := proxy(p.Config, req)
             if err != nil {
                 log.Println("http: proxy error:", err)
                 rw.WriteHeader(http.StatusInternalServerError)
-                vHosts[req.Host].ActiveRequests.Stop(cacheKey, b)
+                p.Config.ActiveRequests.Stop(cacheKey, b)
                 return
             }
             l.OriginTime = time.Since(t)
@@ -201,16 +190,16 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 } else {
                     log.Println("Error reading proxy response:", err)
                     rw.WriteHeader(http.StatusInternalServerError)
-                    vHosts[req.Host].ActiveRequests.Stop(cacheKey, b)
+                    p.Config.ActiveRequests.Stop(cacheKey, b)
                     return
                 }
             }
-            if cacheableRequest(req) && cacheableResponse(resp) && !vHosts[req.Host].ByPass {
-                cache.Set(cacheKey, b, vHosts[req.Host].Expire)
-                vHosts[req.Host].ActiveRequests.Stop(cacheKey, b)
+            if cacheableRequest(req) && cacheableResponse(resp) && !p.Config.ByPass {
+                cache.Set(cacheKey, b, p.Config.Expire)
+                p.Config.ActiveRequests.Stop(cacheKey, b)
             }
         } else {
-            b = vHosts[req.Host].ActiveRequests.Wait(cacheKey)
+            b = p.Config.ActiveRequests.Wait(cacheKey)
             status = "COLLAPSED"
         }
     }
@@ -232,19 +221,50 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     l.Log()
 }
 
+func NewHandlerFunc(conf *LocationConfig) func(http.ResponseWriter, *http.Request) {
+    p := &proxyHandler{
+        Config: conf,
+    }
+    return p.ServeHTTP
+}
+
 // initialize global settings
 func init() {
-    flag.Parse()
-    runtime.GOMAXPROCS(runtime.NumCPU())
-    if err := loadConfig(*configDir); err != nil {
-        log.Panic(err)
-    }
-    loadConfigs(*vhostDir)
     cache = NewCache(1024)
 }
 
 // start server
-func main() {
-    p := proxyHandler{}
-    log.Fatal(http.ListenAndServe("0.0.0.0:80", p))
+func StartProxy() error {
+    if err := loadVhosts(config.VhostPath); err != nil {
+        log.Println("Warning:", err)
+    }
+    ports := make(map[int]*http.ServeMux)
+    for vhost, cfg := range vHosts {
+        if _, ok := ports[cfg.Port]; !ok {
+            ports[cfg.Port] = http.NewServeMux()
+        }
+        for loc, locCfg := range cfg.Location {
+            ports[cfg.Port].HandleFunc(vhost+loc, NewHandlerFunc(locCfg))   
+        }
+    }
+    var wg sync.WaitGroup
+    for p, sm := range ports {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            server := &http.Server{
+                Addr:           "localhost:" + strconv.Itoa(p),
+                Handler:        sm,
+                ReadTimeout:    60 * time.Second,
+                WriteTimeout:   60 * time.Second,
+                MaxHeaderBytes: 0,
+            }
+            if err := server.ListenAndServe(); err != nil {
+                log.Println(err)
+            }
+        }()
+    }
+    log.Println("Proxy server started")
+    wg.Wait()
+    return nil
 }
