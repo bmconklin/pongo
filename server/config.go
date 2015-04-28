@@ -25,6 +25,7 @@ type vHost struct {
     Port            int                         `json:"port"`
     VHosts          []string                    `json:"vhosts"`
     Location        map[string]*LocationConfig  `json:"location"`
+    Variables       map[string]interface{}      `json:"variables"`
 }
 
 // Configuration settings for a log

@@ -16,6 +16,9 @@
         }
     },
     "variables": {
-        "company" : 10
+        "company" : 10,
+        "zone": 42,
+        "alias": "bconklin",
+        "zone_name": "test01"
     }
 }

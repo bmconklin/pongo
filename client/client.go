@@ -59,6 +59,9 @@ func startCommunication(br *bufio.Reader, bw *bufio.Writer) {
         if strings.HasPrefix(text, "exit") {
             return
         }
+        if text == "\n" {
+            continue
+        }
         fmt.Fprintf(bw, text)
         bw.Flush()
         fmt.Print(listener(br))

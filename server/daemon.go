@@ -45,7 +45,6 @@ func registerCommands() {
                 map[string]*Command{},
                 func(context []string) (reply string, err error) {
                     if len(context) == 0 {
-                        log.Println(vHosts)
                         for v, cfg := range vHosts {
                             // only display each one once
                             if cfg.VHosts[0] == v {
