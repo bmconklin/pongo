@@ -30,12 +30,19 @@ func Connect(config *Config) {
 }
 
 func listener(br *bufio.Reader) string {
-    str, err := br.ReadString('\n')
-    if err != nil {
-        log.Fatal(err)
-        return ""
+    resp := ""
+    for {
+        str, err := br.ReadString('\n')
+        if err != nil {
+            log.Fatal(err)
+            return ""
+        }
+        resp += str
+        if br.Buffered() == 0 {
+            break
+        }
     }
-    return str
+    return resp
 }
 
 func startCommunication(br *bufio.Reader, bw *bufio.Writer) {

@@ -16,8 +16,8 @@ type LocationConfig struct {
     Expire          int                     `json:"expire"`
     SetHeader       map[string]string       `json:"set_header"`
     ByPass          bool                    `json:"cache_bypass"`
-    Proxy           *httputil.ReverseProxy
-    ActiveRequests  *ActiveRequests
+    Proxy           *httputil.ReverseProxy  `json:"-"`
+    ActiveRequests  *ActiveRequests         `json:"-"`
 }
 
 // config for a vhost
@@ -51,6 +51,22 @@ type Config struct {
 // hashmap of vhost to config
 var vHosts map[string]*vHost
 var config Config
+
+func (v *vHost) String() string {
+    b, err := json.Marshal(v)
+    if err != nil {
+        log.Println(err)
+    }
+    return string(b)
+}
+
+func (v *vHost) PrettyString() string {
+    b, err := json.MarshalIndent(v, "", "  ")
+    if err != nil {
+        log.Println(err)
+    }
+    return string(b)
+}
 
 // Load global config file
 func LoadConfig(path string) error {
