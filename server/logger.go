@@ -2,8 +2,8 @@ package server
 
 import (
     "os"
+    "log"
     "time"
-    "bufio"
     "strconv"
     "strings"
     "net/url"
@@ -30,7 +30,7 @@ type AccessLog struct {
 }
 
 type AccessLogger struct {
-    Logger *bufio.Writer
+    Logger *log.Logger
     Format string
 }
 
@@ -73,11 +73,10 @@ func openAccessLogs() {
             if err != nil {
                 panic(err)
             }
-            buf := bufio.NewWriter(file)
             accessLogger = append(accessLogger, &AccessLogger{
-                    Logger: buf,
-                    Format: l.Format,
-                })
+                log.New(file, "Pongo: ", 0),
+                l.Format,
+            })
         }
     }
 }
@@ -106,7 +105,6 @@ func (l *AccessLog) Log() {
         )
 
     for i := range accessLogger {
-        accessLogger[i].Logger.Write([]byte(accessLogReplacer.Replace(accessLogger[i].Format) + "\n"))
-        accessLogger[i].Logger.Flush()
+        accessLogger[i].Logger.Println(accessLogReplacer.Replace(accessLogger[i].Format))
     }
 }
