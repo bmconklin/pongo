@@ -195,7 +195,7 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
                 }
             }
             if cacheableRequest(req) && cacheableResponse(resp) && !p.Config.ByPass {
-                cache.Set(cacheKey, b, p.Config.Expire)
+                cache.Set(cacheKey, b, time.Now().Add(time.Duration(p.Config.Expire) * time.Second))
                 p.Config.ActiveRequests.Stop(cacheKey, b)
             }
         } else {
@@ -228,13 +228,10 @@ func NewHandlerFunc(conf *LocationConfig) func(http.ResponseWriter, *http.Reques
     return p.ServeHTTP
 }
 
-// initialize global settings
-func init() {
-    cache = NewCache(1024)
-}
-
 // start server
 func StartProxy() error {
+    cache = NewCache()
+
     if err := loadVhosts(config.VhostPath); err != nil {
         log.Println("Warning:", err)
     }

@@ -97,7 +97,7 @@ func (l *AccessLog) Log() {
             "$zone_query_string", l.URL.RawQuery,
             "$http_referer", l.Referer,
             "$scheme", l.Scheme,
-            "$zone_status", "",
+            "$status", strconv.Itoa(l.StatusCode),
             "$msec", l.Timestamp.Format("2006-01-02_15:04:05.000"),
             "$uri", l.URL.Path,
             "$http_user_agent", l.UserAgent,

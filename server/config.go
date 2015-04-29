@@ -36,14 +36,16 @@ type LogConfig struct {
     Verbose     bool        `json:"verbose"`
 }
 
+type CacheConfig struct {
+    Type    string
+    Size    int
+}
+
 // Global Config structure
 type Config struct {
     Server      string        
     Port        int
-    Cache   struct{
-        Type    string
-        Size    int
-    }
+    Cache       map[string]*CacheConfig
     Logs        []LogConfig             `json:"logs"`
     SetHeader   map[string]string       `json:"set_header"`
     VhostPath   string                  `json:"vhostpath"`
