@@ -38,7 +38,7 @@ type LogConfig struct {
 
 type CacheConfig struct {
     Type    string
-    Size    int
+    Size    int64
 }
 
 // Global Config structure

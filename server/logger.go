@@ -20,7 +20,7 @@ type AccessLog struct {
     StatusCode      int
     Proto           string
     Scheme          string
-    ContentLength   int64
+    Size            int64
     RequestTime     time.Duration
     OriginTime      time.Duration
     Timestamp       time.Time
@@ -60,7 +60,6 @@ func (l *AccessLog) ParseReq(req *http.Request) {
 func (l *AccessLog) ParseResp(resp *http.Response) {
     l.Status        = resp.Status
     l.StatusCode    = resp.StatusCode
-    l.ContentLength = resp.ContentLength
     l.RequestTime   = time.Since(l.Timestamp)
     l.URL           = resp.Request.URL
 }
@@ -86,7 +85,7 @@ func (l *AccessLog) Log() {
         openAccessLogs()
     }
     accessLogReplacer := strings.NewReplacer(
-            "$body_bytes_sent", strconv.FormatInt(l.ContentLength, 10),
+            "$body_bytes_sent", strconv.FormatInt(l.Size, 10),
             "$remote_addr", l.RemoteAddr,
             "$hostname", l.Host,
             "$cache_status", l.CacheStatus,

@@ -164,7 +164,7 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     l.ParseReq(req)
     var b []byte
     origin, _ := url.Parse(p.Config.Origin)
-    cacheKey := p.Config.GetCacheKey(req)
+    cacheKey := p.Config.GetCacheKey(p.Config.Origin, req)
     data, status := cache.Get(cacheKey)
     if status == "MISS" || status == "EXPIRED" {
         // ORDER OF CONDITIONS IS VERY IMPORTANT
@@ -208,6 +208,7 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
     }    
     l.CacheStatus = status
     l.Scheme = origin.Scheme
+    l.Size  = int64(len(b))
 
     buf := bytes.NewBuffer(b)
     resp, err := http.ReadResponse(bufio.NewReader(buf), req)
@@ -216,6 +217,7 @@ func (p proxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
         rw.WriteHeader(http.StatusInternalServerError)
         return
     }
+    req.Close = true
     respond(resp, rw)
     l.ParseResp(resp)
     l.Log()
