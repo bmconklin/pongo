@@ -253,7 +253,7 @@ func StartProxy() error {
         go func() {
             defer wg.Done()
             server := &http.Server{
-                Addr:           "localhost:" + strconv.Itoa(p),
+                Addr:           config.Server + strconv.Itoa(p),
                 Handler:        sm,
                 ReadTimeout:    60 * time.Second,
                 WriteTimeout:   60 * time.Second,
