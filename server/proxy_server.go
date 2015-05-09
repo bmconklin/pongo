@@ -139,7 +139,6 @@ func proxy(lc *LocationConfig, req  *http.Request) (*http.Response, error) {
         }
         outreq.Header.Set("X-Forwarded-For", clientIP)
     }
-
     resp, err := transport.RoundTrip(outreq)
     if err != nil {
         log.Println("http: proxy error: %v", err)
@@ -253,7 +252,7 @@ func StartProxy() error {
         go func() {
             defer wg.Done()
             server := &http.Server{
-                Addr:           config.Server + strconv.Itoa(p),
+                Addr:           config.Server + ":" + strconv.Itoa(p),
                 Handler:        sm,
                 ReadTimeout:    60 * time.Second,
                 WriteTimeout:   60 * time.Second,
